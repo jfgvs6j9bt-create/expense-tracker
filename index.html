@@ -138,11 +138,6 @@ function drillV(shown){
   return `<div style="margin-top:14px"><button class="lnk" data-a="crumb" data-v="${n-1}">← 上一層</button></div><div class="sm" style="margin-top:6px">${crumbs}</div>
   <div class="stats"><div><div class="mut">${inc?'收入':'支出'}合計</div><div class="big ${inc?'inc':'exp'}">${fmt(sum)}</div></div></div>${sub}`;
 }
-function split(list){
-  const{total,g}=grp(list),inc=pieType==='income';
-  if(!total)return CTL()+'<p class="mut c">本月沒有資料</p>';
-  return CTL()+g.map(([n,v])=>`<button class="g cl" ${dr([n],n)}><span>${esc(n)}</span><span class="${inc?'inc':'exp'}">${inc?'+':'-'}${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></button>`).join('');
-}
 
 function d2(y,m,d){return `${y}-${p2(m)}-${p2(d)}`}
 function setPreset(k){
@@ -163,12 +158,12 @@ function home(){
   const list=recs.filter(r=>ranged?(r.date>=lo&&r.date<=hi):r.date.startsWith(ym)).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||b.id).localeCompare(a.createdAt||a.id));
   const shown=drill?list.filter(r=>r.type===drill.type&&drill.fl.every(f=>f.vs.includes(r[f.k]||'未標記'))):list;
   const t=tot(list),st=(l,v,c)=>`<div><div class="mut">${l}</div><div class="big ${c}">${fmt(v)}</div></div>`;
-  const body=drill?drillV(shown):mode==='pie'?pie(list):mode==='combined'
+  const body=drill?drillV(shown):mode==='combined'
     ?`<div class="stats">${st('收入',t.i,'inc')}${st('支出',t.e,'exp')}${st('結餘',t.i-t.e,'')}</div>`
-    :split(list);
+    :pie(list);
   const rangeUI=`<div class="chips" style="margin-top:12px">${[['month','本月'],['last','上月'],['m3','近3個月'],['year','今年']].map(([k,l])=>`<button class="chip ${rp===k?'on':''}" data-a="rp" data-v="${k}">${l}</button>`).join('')}</div><div class="rng"><input type="date" data-r="rf" value="${esc(rf)}" aria-label="起始日"><span class="mut">至</span><input type="date" data-r="rt" value="${esc(rt)}" aria-label="結束日"></div>`;
   return `<div class="card">${ranged?`<div class="mrow"><b>${esc(lo)} ~ ${esc(hi)} 收支</b></div>`:`<div class="mrow"><button class="ar" data-a="ym" data-v="-1" aria-label="上個月">‹</button><b>${ym} 收支</b><button class="ar" data-a="ym" data-v="1" aria-label="下個月">›</button></div>`}
-  ${drill?'':seg('mode',[['combined','合併'],['split','分別'],['pie','圓餅圖']],mode)+(ranged?rangeUI:'')}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
+  ${drill?'':seg('mode',[['combined','合併'],['pie','統計']],mode)+(ranged?rangeUI:'')}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
   <p class="mut sm r">成員：${esc(cfg.user)}　<a href="#" data-a="go" data-v="settings">設定</a></p></div>
   <div class="bar"><button class="btn" data-a="sync">${syncing?'同步中…':'同步'}</button><button class="btn pri" data-a="go" data-v="add">記一筆</button></div>
   ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.content?'　'+esc(r.content):''}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
