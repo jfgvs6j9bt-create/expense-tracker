@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-Hant"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="記帳">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>記帳</title>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--tx:#1b1f24;--mut:#6b7280;--bd:#d8dbe0;--pri:#1f3a5f;--inc:#13795b;--exp:#b4432f}
+@media(prefers-color-scheme:dark){:root{--bg:#101215;--card:#181b20;--tx:#e6e8eb;--mut:#8b919a;--bd:#2d3239;--pri:#3b6aa8;--inc:#3fbf93;--exp:#ef8a74}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"PingFang TC","Noto Sans TC",sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+main{max-width:560px;margin:0 auto;padding:12px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.card{background:var(--card);border-radius:6px;padding:16px;margin-bottom:12px;border:1px solid var(--bd)}
+.seg{display:flex;border:1px solid var(--pri);border-radius:6px;overflow:hidden;margin-top:10px}
+.seg button{flex:1;padding:8px}.seg .on{background:var(--pri);color:#fff}
+.mrow{display:flex;justify-content:space-between;align-items:center}
+.ar{font-size:28px;padding:0 12px;color:var(--pri)}
+.stats{display:flex;justify-content:space-around;margin-top:16px;text-align:center}
+.big{font-size:22px;font-weight:600}
+.g{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd)}
+.g span:first-child{width:80px}
+.bar{display:flex;gap:10px;margin-bottom:8px}
+.btn{padding:12px;border-radius:6px;background:var(--bd);text-align:center;flex:1}
+.pri{background:var(--pri);color:#fff}
+.full{display:block;width:100%;margin-top:16px}
+.it{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--bd)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:6px 12px;border:1px solid var(--bd);border-radius:16px}
+.chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+label{display:block;margin:14px 0 4px;color:var(--mut)}
+input{width:100%;padding:10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font:inherit}
+.mut{color:var(--mut)}.sm{font-size:12px}.c{text-align:center}.r{text-align:right}
+.inc{color:var(--inc)}.exp{color:var(--exp)}
+.big,.g,.it b{font-variant-numeric:tabular-nums}
+a,.lnk{color:var(--pri)}
+.rng{display:flex;align-items:center;gap:8px;margin-top:10px}.rng input{flex:1;min-width:0}
+.pie{display:block;width:210px;margin:16px auto 8px}
+.leg{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-variant-numeric:tabular-nums}
+.dot{width:12px;height:12px;border-radius:3px;flex:none}
+.leg span:nth-child(2){flex:1}.leg b{width:52px;text-align:right}
+</style></head><body><main id="app"></main>
+<script>
+const CATEGORIES=['餐飲','交通','購物','娛樂','居住','醫療','薪資','其他'];
+const CHANNELS=['現金','信用卡','行動支付','轉帳','其他'];
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const p2=n=>String(n).padStart(2,'0');
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`};
+const fmt=n=>(Math.round(n*100)/100).toLocaleString('zh-TW');
+const shift=(m,d)=>{const[y,mo]=m.split('-').map(Number),t=new Date(y,mo-1+d,1);return `${t.getFullYear()}-${p2(t.getMonth()+1)}`};
+const blank=()=>({type:'expense',amount:'',category:CATEGORIES[0],channel:CHANNELS[0],date:today(),content:'',note:''});
+
+let cfg=LS.get('cfg',{url:'',token:'',user:''}),sc={...cfg};
+let recs=LS.get('records_v1',[]);
+let view=cfg.url&&cfg.token&&cfg.user?'home':'settings';
+let ym=today().slice(0,7),mode='combined',splitBy='user',pieBy='category',pieType='expense',rf='',rt='',rp='month',syncing=false,err='',f=blank();
+const save=()=>LS.set('records_v1',recs);
+const refresh=()=>{if(view!=='add')render()};
+
+// ---- API ----
+async function req(url,init){const c=new AbortController(),t=setTimeout(()=>c.abort(),15000);try{return await(await fetch(url,{...init,signal:c.signal})).json()}finally{clearTimeout(t)}}
+async function pull(){
+  const j=await req(`${cfg.url}?token=${encodeURIComponent(cfg.token)}`);
+  if(!j.ok)throw new Error(j.error);
+  return j.data.map(r=>({id:String(r.id),date:String(r.date),type:r.type==='income'?'income':'expense',category:String(r.category??''),amount:Number(r.amount)||0,content:String(r.content??''),note:String(r.note??''),createdAt:String(r.createdAt??''),user:String(r.user??''),channel:String(r.channel??''),synced:true}));
+}
+async function push(list){
+  if(!list.length)return;
+  const records=list.map(({synced,...r})=>r);
+  const j=await req(cfg.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:cfg.token,records})});
+  if(!j.ok)throw new Error(j.error);
+}
+async function sync(){
+  if(syncing||!cfg.url)return;
+  syncing=true;err='';refresh();
+  try{
+    await push(recs.filter(r=>!r.synced));
+    const remote=await pull(),ids=new Set(remote.map(r=>r.id));
+    const local=recs.filter(r=>!ids.has(r.id)&&!r.synced);
+    recs=[...remote,...local];save();
+  }catch(e){err='同步失敗（可能沒有網路或設定有誤），資料已保留在本機'}
+  syncing=false;refresh();
+}
+function add(){
+  const n=Number(f.amount);
+  if(!(n>0))return alert('請輸入正確金額');
+  if(!f.date)return alert('請選擇日期');
+  const it={id:Date.now().toString(36)+Math.random().toString(36).slice(2,8),date:f.date,type:f.type,category:f.category,amount:n,content:f.content.trim(),note:f.note.trim(),createdAt:new Date().toISOString(),user:cfg.user,channel:f.channel,synced:false};
+  recs=[it,...recs];save();f=blank();view='home';render();
+  push([it]).then(()=>{const r=recs.find(x=>x.id===it.id);if(r){r.synced=true;save();refresh()}}).catch(()=>{});
+}
+
+// ---- stats ----
+const tot=l=>l.reduce((t,r)=>{r.type==='income'?t.i+=r.amount:t.e+=r.amount;return t},{i:0,e:0});
+function groups(l,k){const m={};l.forEach(r=>{const n=r[k]||'未標記';(m[n]=m[n]||[]).push(r)});return Object.entries(m).map(([n,x])=>({n,...tot(x)})).sort((a,b)=>b.e-a.e)}
+
+const COLORS=['#3b6aa8','#13a07a','#d9663f','#d4a017','#8a63c9','#2ab3a6','#8d99ae','#e0527a'];
+function pie(list){
+  const rows=list.filter(r=>r.type===pieType),total=rows.reduce((a,r)=>a+r.amount,0),m={};
+  rows.forEach(r=>{const n=r[pieBy]||'未標記';m[n]=(m[n]||0)+r.amount});
+  let g=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  if(g.length>8)g=[...g.slice(0,7),['其他',g.slice(7).reduce((a,x)=>a+x[1],0)]];
+  const ctl=seg('pieType',[['expense','支出'],['income','收入']],pieType)+seg('pieBy',[['category','項目'],['channel','通路'],['user','成員']],pieBy);
+  if(!total)return ctl+'<p class="mut c">本月沒有資料</p>';
+  let off=0;
+  const arcs=g.map(([n,v],i)=>{const p=v/total*100,c=`<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${COLORS[i]}" stroke-width="7" stroke-dasharray="${p} ${100-p}" stroke-dashoffset="${25-off}"/>`;off+=p;return c}).join('');
+  return ctl+`<svg class="pie" viewBox="0 0 42 42" role="img" aria-label="圓餅圖">${arcs}<text x="21" y="20.5" text-anchor="middle" font-size="3" style="fill:var(--mut)">${pieType==='income'?'收入':'支出'}</text><text x="21" y="25" text-anchor="middle" font-size="4" font-weight="600" style="fill:var(--tx)">${fmt(total)}</text></svg>`
+    +g.map(([n,v],i)=>`<div class="leg"><i class="dot" style="background:${COLORS[i]}"></i><span>${esc(n)}</span><span>${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></div>`).join('');
+}
+
+function d2(y,m,d){return `${y}-${p2(m)}-${p2(d)}`}
+function setPreset(k){
+  const n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,e=(a,b)=>d2(a,b,new Date(a,b,0).getDate());
+  const pm=new Date(y,m-2,1),sm=new Date(y,m-3,1);
+  if(k==='month'){rf=d2(y,m,1);rt=e(y,m)}
+  else if(k==='last'){const a=pm.getFullYear(),b=pm.getMonth()+1;rf=d2(a,b,1);rt=e(a,b)}
+  else if(k==='m3'){rf=d2(sm.getFullYear(),sm.getMonth()+1,1);rt=e(y,m)}
+  else if(k==='year'){rf=d2(y,1,1);rt=d2(y,12,31)}
+  rp=k;
+}
+
+// ---- views ----
+const seg=(k,o,v)=>`<div class="seg">${o.map(([a,b])=>`<button class="${a===v?'on':''}" data-a="set" data-k="${k}" data-v="${a}">${b}</button>`).join('')}</div>`;
+function home(){
+  const ranged=mode!=='combined';
+  let lo=rf||'0000',hi=rt||'9999';if(lo>hi)[lo,hi]=[hi,lo];
+  const list=recs.filter(r=>ranged?(r.date>=lo&&r.date<=hi):r.date.startsWith(ym)).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||b.id).localeCompare(a.createdAt||a.id));
+  const t=tot(list),st=(l,v,c)=>`<div><div class="mut">${l}</div><div class="big ${c}">${fmt(v)}</div></div>`;
+  const body=mode==='pie'?pie(list):mode==='combined'
+    ?`<div class="stats">${st('收入',t.i,'inc')}${st('支出',t.e,'exp')}${st('結餘',t.i-t.e,'')}</div>`
+    :seg('splitBy',[['user','依成員'],['channel','依通路']],splitBy)+(groups(list,splitBy).map(g=>`<div class="g"><span>${esc(g.n)}</span><span class="inc">+${fmt(g.i)}</span><span class="exp">-${fmt(g.e)}</span><b>${fmt(g.i-g.e)}</b></div>`).join('')||'<p class="mut c">本月沒有資料</p>');
+  const rangeUI=`<div class="chips" style="margin-top:12px">${[['month','本月'],['last','上月'],['m3','近3個月'],['year','今年']].map(([k,l])=>`<button class="chip ${rp===k?'on':''}" data-a="rp" data-v="${k}">${l}</button>`).join('')}</div><div class="rng"><input type="date" data-r="rf" value="${esc(rf)}" aria-label="起始日"><span class="mut">至</span><input type="date" data-r="rt" value="${esc(rt)}" aria-label="結束日"></div>`;
+  return `<div class="card">${ranged?`<div class="mrow"><b>${esc(lo)} ~ ${esc(hi)} 收支</b></div>`:`<div class="mrow"><button class="ar" data-a="ym" data-v="-1" aria-label="上個月">‹</button><b>${ym} 收支</b><button class="ar" data-a="ym" data-v="1" aria-label="下個月">›</button></div>`}
+  ${seg('mode',[['combined','合併'],['split','分別'],['pie','圓餅圖']],mode)}${ranged?rangeUI:''}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
+  <p class="mut sm r">成員：${esc(cfg.user)}　<a href="#" data-a="go" data-v="settings">設定</a></p></div>
+  <div class="bar"><button class="btn" data-a="sync">${syncing?'同步中…':'同步'}</button><button class="btn pri" data-a="go" data-v="add">記一筆</button></div>
+  ${list.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.content?'　'+esc(r.content):''}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
+}
+function addV(){
+  const chips=(k,items,v)=>`<div class="chips">${items.map(c=>`<button class="chip ${c===v?'on':''}" data-a="f" data-k="${k}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+  return `<div class="card"><button class="lnk" data-a="go" data-v="home">← 返回</button>
+  ${seg('type',[['expense','支出'],['income','收入']],f.type).replace(/data-a="set"/g,'data-a="f"')}
+  <label>金額</label><input data-f="amount" inputmode="decimal" placeholder="0" value="${esc(f.amount)}">
+  <label>項目</label>${chips('category',CATEGORIES,f.category)}
+  <label>通路</label>${chips('channel',CHANNELS,f.channel)}
+  <label>日期</label><input type="date" data-f="date" value="${esc(f.date)}">
+  <label>內容</label><input data-f="content" placeholder="例如：午餐便當" value="${esc(f.content)}">
+  <label>備註</label><input data-f="note" placeholder="選填" value="${esc(f.note)}">
+  <button class="btn pri full" data-a="save">儲存</button></div>`;
+}
+function setV(){
+  return `<div class="card"><b>設定</b><p class="mut sm">網址與 token 只存在這支手機的瀏覽器裡。</p>
+  <label>Apps Script 網址（結尾 /exec）</label><input data-s="url" autocapitalize="off" value="${esc(sc.url)}">
+  <label>Token</label><input data-s="token" type="password" autocapitalize="off" value="${esc(sc.token)}">
+  <label>你的名字（成員）</label><input data-s="user" value="${esc(sc.user)}">
+  <button class="btn pri full" data-a="cfg">儲存設定</button>${cfg.url?'<button class="btn full" data-a="go" data-v="home">取消</button>':''}</div>`;
+}
+function render(){$('#app').innerHTML=view==='home'?home():view==='add'?addV():setV()}
+
+// ---- events ----
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-a]');if(!el)return;e.preventDefault();
+  const{a,k,v}=el.dataset;
+  if(a==='set'){if(k==='mode')mode=v;else if(k==='pieBy')pieBy=v;else if(k==='pieType')pieType=v;else splitBy=v;render()}
+  else if(a==='ym'){ym=shift(ym,+v);render()}
+  else if(a==='rp'){setPreset(v);render()}
+  else if(a==='sync')sync();
+  else if(a==='go'){view=v;if(v==='settings')sc={...cfg};render()}
+  else if(a==='f'){f[k]=v;render()}
+  else if(a==='save')add();
+  else if(a==='cfg'){
+    const u=sc.url.trim(),t=sc.token.trim(),n=sc.user.trim();
+    if(!/^https:\/\/script\.google\.com\//.test(u)||!t||!n)return alert('請填寫完整，網址需以 https://script.google.com/ 開頭');
+    cfg={url:u,token:t,user:n};LS.set('cfg',cfg);view='home';render();sync();
+  }
+});
+document.addEventListener('input',e=>{const d=e.target.dataset;if(d.f)f[d.f]=e.target.value;if(d.s)sc[d.s]=e.target.value;if(d.r){d.r==='rf'?rf=e.target.value:rt=e.target.value;rp='custom'}});
+document.addEventListener('change',e=>{if(e.target.dataset.r)render()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
+addEventListener('online',sync);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+setPreset('month');render();sync();
+</script></body></html>
