@@ -44,6 +44,7 @@ a,.lnk{color:var(--pri)}
 .rng{display:flex;align-items:center;gap:8px;margin-top:10px}.rng input{flex:1;min-width:0}
 .pie{display:block;width:210px;margin:16px auto 8px}
 .leg{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-variant-numeric:tabular-nums}
+.g.cl,.leg{width:100%;text-align:left;cursor:pointer}.g.cl{gap:8px}.g.cl span:first-child{flex:1;width:auto}.g.cl b{width:52px;text-align:right}
 .dot{width:12px;height:12px;border-radius:3px;flex:none}
 .leg span:nth-child(2){flex:1}.leg b{width:52px;text-align:right}
 </style></head><body><main id="app"></main>
@@ -62,7 +63,7 @@ const blank=()=>({type:'expense',amount:'',category:CATEGORIES[0],channel:CHANNE
 let cfg=LS.get('cfg',{url:'',token:'',user:''}),sc={...cfg};
 let recs=LS.get('records_v1',[]);
 let view=cfg.url&&cfg.token&&cfg.user?'home':'settings';
-let ym=today().slice(0,7),mode='combined',splitBy='user',pieBy='category',pieType='expense',rf='',rt='',rp='month',syncing=false,err='',f=blank();
+let ym=today().slice(0,7),mode='combined',pieBy='category',pieType='expense',rf='',rt='',rp='month',syncing=false,err='',drill=null,f=blank();
 const save=()=>LS.set('records_v1',recs);
 const refresh=()=>{if(view!=='add')render()};
 
@@ -101,20 +102,31 @@ function add(){
 
 // ---- stats ----
 const tot=l=>l.reduce((t,r)=>{r.type==='income'?t.i+=r.amount:t.e+=r.amount;return t},{i:0,e:0});
-function groups(l,k){const m={};l.forEach(r=>{const n=r[k]||'未標記';(m[n]=m[n]||[]).push(r)});return Object.entries(m).map(([n,x])=>({n,...tot(x)})).sort((a,b)=>b.e-a.e)}
 
 const COLORS=['#3b6aa8','#13a07a','#d9663f','#d4a017','#8a63c9','#2ab3a6','#8d99ae','#e0527a'];
-function pie(list){
-  const rows=list.filter(r=>r.type===pieType),total=rows.reduce((a,r)=>a+r.amount,0),m={};
+const CTL=()=>seg('pieType',[['expense','支出'],['income','收入']],pieType)+seg('pieBy',[['category','項目'],['channel','通路'],['user','成員']],pieBy);
+const BYL={category:'項目',channel:'通路',user:'成員'};
+const dr=(vs,n)=>`data-a="drill" data-vs="${esc(JSON.stringify(vs))}" data-n="${esc(n)}"`;
+function grp(list){
+  const rows=list.filter(r=>r.type===pieType),m={};
+  const total=rows.reduce((a,r)=>a+r.amount,0);
   rows.forEach(r=>{const n=r[pieBy]||'未標記';m[n]=(m[n]||0)+r.amount});
-  let g=Object.entries(m).sort((a,b)=>b[1]-a[1]);
-  if(g.length>8)g=[...g.slice(0,7),['其他',g.slice(7).reduce((a,x)=>a+x[1],0)]];
-  const ctl=seg('pieType',[['expense','支出'],['income','收入']],pieType)+seg('pieBy',[['category','項目'],['channel','通路'],['user','成員']],pieBy);
-  if(!total)return ctl+'<p class="mut c">本月沒有資料</p>';
+  return{total,g:Object.entries(m).sort((a,b)=>b[1]-a[1])};
+}
+function pie(list){
+  const{total,g:all}=grp(list);
+  if(!total)return CTL()+'<p class="mut c">本月沒有資料</p>';
+  let g=all.map(([n,v])=>[n,v,[n]]);
+  if(g.length>8){const rest=g.slice(7);g=[...g.slice(0,7),['其他',rest.reduce((a,x)=>a+x[1],0),rest.map(x=>x[0])]]}
   let off=0;
   const arcs=g.map(([n,v],i)=>{const p=v/total*100,c=`<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${COLORS[i]}" stroke-width="7" stroke-dasharray="${p} ${100-p}" stroke-dashoffset="${25-off}"/>`;off+=p;return c}).join('');
-  return ctl+`<svg class="pie" viewBox="0 0 42 42" role="img" aria-label="圓餅圖">${arcs}<text x="21" y="20.5" text-anchor="middle" font-size="3" style="fill:var(--mut)">${pieType==='income'?'收入':'支出'}</text><text x="21" y="25" text-anchor="middle" font-size="4" font-weight="600" style="fill:var(--tx)">${fmt(total)}</text></svg>`
-    +g.map(([n,v],i)=>`<div class="leg"><i class="dot" style="background:${COLORS[i]}"></i><span>${esc(n)}</span><span>${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></div>`).join('');
+  return CTL()+`<svg class="pie" viewBox="0 0 42 42" role="img" aria-label="圓餅圖">${arcs}<text x="21" y="20.5" text-anchor="middle" font-size="3" style="fill:var(--mut)">${pieType==='income'?'收入':'支出'}</text><text x="21" y="25" text-anchor="middle" font-size="4" font-weight="600" style="fill:var(--tx)">${fmt(total)}</text></svg>`
+    +g.map(([n,v,vs],i)=>`<button class="leg" ${dr(vs,n)}><i class="dot" style="background:${COLORS[i]}"></i><span>${esc(n)}</span><span>${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></button>`).join('');
+}
+function split(list){
+  const{total,g}=grp(list),inc=pieType==='income';
+  if(!total)return CTL()+'<p class="mut c">本月沒有資料</p>';
+  return CTL()+g.map(([n,v])=>`<button class="g cl" ${dr([n],n)}><span>${esc(n)}</span><span class="${inc?'inc':'exp'}">${inc?'+':'-'}${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></button>`).join('');
 }
 
 function d2(y,m,d){return `${y}-${p2(m)}-${p2(d)}`}
@@ -134,16 +146,18 @@ function home(){
   const ranged=mode!=='combined';
   let lo=rf||'0000',hi=rt||'9999';if(lo>hi)[lo,hi]=[hi,lo];
   const list=recs.filter(r=>ranged?(r.date>=lo&&r.date<=hi):r.date.startsWith(ym)).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||b.id).localeCompare(a.createdAt||a.id));
+  const shown=drill?list.filter(r=>r.type===drill.type&&drill.vs.includes(r[drill.k]||'未標記')):list;
   const t=tot(list),st=(l,v,c)=>`<div><div class="mut">${l}</div><div class="big ${c}">${fmt(v)}</div></div>`;
-  const body=mode==='pie'?pie(list):mode==='combined'
+  const dsum=shown.reduce((a,r)=>a+r.amount,0);
+  const body=drill?`<div class="mrow" style="margin-top:14px"><button class="lnk" data-a="undrill">← 返回統計</button><b>${esc(drill.label)}</b></div><div class="stats">${st(drill.type==='income'?'收入合計':'支出合計',dsum,drill.type==='income'?'inc':'exp')}</div>`:mode==='pie'?pie(list):mode==='combined'
     ?`<div class="stats">${st('收入',t.i,'inc')}${st('支出',t.e,'exp')}${st('結餘',t.i-t.e,'')}</div>`
-    :seg('splitBy',[['user','依成員'],['channel','依通路']],splitBy)+(groups(list,splitBy).map(g=>`<div class="g"><span>${esc(g.n)}</span><span class="inc">+${fmt(g.i)}</span><span class="exp">-${fmt(g.e)}</span><b>${fmt(g.i-g.e)}</b></div>`).join('')||'<p class="mut c">本月沒有資料</p>');
+    :split(list);
   const rangeUI=`<div class="chips" style="margin-top:12px">${[['month','本月'],['last','上月'],['m3','近3個月'],['year','今年']].map(([k,l])=>`<button class="chip ${rp===k?'on':''}" data-a="rp" data-v="${k}">${l}</button>`).join('')}</div><div class="rng"><input type="date" data-r="rf" value="${esc(rf)}" aria-label="起始日"><span class="mut">至</span><input type="date" data-r="rt" value="${esc(rt)}" aria-label="結束日"></div>`;
   return `<div class="card">${ranged?`<div class="mrow"><b>${esc(lo)} ~ ${esc(hi)} 收支</b></div>`:`<div class="mrow"><button class="ar" data-a="ym" data-v="-1" aria-label="上個月">‹</button><b>${ym} 收支</b><button class="ar" data-a="ym" data-v="1" aria-label="下個月">›</button></div>`}
-  ${seg('mode',[['combined','合併'],['split','分別'],['pie','圓餅圖']],mode)}${ranged?rangeUI:''}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
+  ${drill?'':seg('mode',[['combined','合併'],['split','分別'],['pie','圓餅圖']],mode)+(ranged?rangeUI:'')}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
   <p class="mut sm r">成員：${esc(cfg.user)}　<a href="#" data-a="go" data-v="settings">設定</a></p></div>
   <div class="bar"><button class="btn" data-a="sync">${syncing?'同步中…':'同步'}</button><button class="btn pri" data-a="go" data-v="add">記一筆</button></div>
-  ${list.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.content?'　'+esc(r.content):''}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
+  ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.content?'　'+esc(r.content):''}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
 }
 function addV(){
   const chips=(k,items,v)=>`<div class="chips">${items.map(c=>`<button class="chip ${c===v?'on':''}" data-a="f" data-k="${k}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
@@ -170,11 +184,13 @@ function render(){$('#app').innerHTML=view==='home'?home():view==='add'?addV():s
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-a]');if(!el)return;e.preventDefault();
   const{a,k,v}=el.dataset;
-  if(a==='set'){if(k==='mode')mode=v;else if(k==='pieBy')pieBy=v;else if(k==='pieType')pieType=v;else splitBy=v;render()}
+  if(a==='set'){if(k==='mode')mode=v;else if(k==='pieBy')pieBy=v;else if(k==='pieType')pieType=v;render()}
   else if(a==='ym'){ym=shift(ym,+v);render()}
   else if(a==='rp'){setPreset(v);render()}
   else if(a==='sync')sync();
-  else if(a==='go'){view=v;if(v==='settings')sc={...cfg};render()}
+  else if(a==='drill'){drill={k:pieBy,type:pieType,vs:JSON.parse(el.dataset.vs),label:`${pieType==='income'?'收入':'支出'}・${BYL[pieBy]}：${el.dataset.n}`};render();scrollTo(0,0)}
+  else if(a==='undrill'){drill=null;render()}
+  else if(a==='go'){drill=null;view=v;if(v==='settings')sc={...cfg};render()}
   else if(a==='f'){f[k]=v;render()}
   else if(a==='save')add();
   else if(a==='cfg'){
