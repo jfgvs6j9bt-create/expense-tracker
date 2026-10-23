@@ -1,5 +1,5 @@
 // 離線快取：App 外殼用快取優先；Apps Script 的 API 請求一律不攔截
-const CACHE = 'ledger-v4';
+const CACHE = 'ledger-v5';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
