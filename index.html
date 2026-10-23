@@ -172,11 +172,11 @@ function addV(){
   const chips=(k,items,v)=>`<div class="chips">${items.map(c=>`<button class="chip ${c===v?'on':''}" data-a="f" data-k="${k}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
   return `<div class="card"><button class="lnk" data-a="go" data-v="home">← 返回</button>
   ${seg('type',[['expense','支出'],['income','收入']],f.type).replace(/data-a="set"/g,'data-a="f"')}
+  <label>日期</label><input type="date" data-f="date" value="${esc(f.date)}">
   <label>金額</label><input data-f="amount" inputmode="decimal" placeholder="0" value="${esc(f.amount)}">
+  <label>內容</label><input data-f="content" placeholder="例如：午餐便當" value="${esc(f.content)}">
   <label>項目</label>${chips('category',CATEGORIES,f.category)}
   <label>通路</label>${chips('channel',CHANNELS,f.channel)}
-  <label>日期</label><input type="date" data-f="date" value="${esc(f.date)}">
-  <label>內容</label><input data-f="content" placeholder="例如：午餐便當" value="${esc(f.content)}">
   <label>備註</label><input data-f="note" placeholder="選填" value="${esc(f.note)}">
   <button class="btn pri full" data-a="save">儲存</button></div>`;
 }
