@@ -49,7 +49,8 @@ a,.lnk{color:var(--pri)}
 .leg span:nth-child(2){flex:1}.leg b{width:52px;text-align:right}
 </style></head><body><main id="app"></main>
 <script>
-const CATEGORIES=['皮寶','日用品','服飾','娛樂','餐飲','醫療','交通','學習','小確幸','出國','家用支出','保險','稅','薪資','其他'];
+const CATEGORIES=['皮寶','日用品','服飾','娛樂','餐飲','醫療','交通','學習','小確幸','出國','家用支出','保險','稅','其他'];
+const INCOME_CATEGORIES=['薪水','投資','買賣','退款','代墊','政府補助','家人匯款','其他'];
 const CHANNELS=['momo','蝦皮','酷澎','團購','女醫版','官網','實體店面','APP','其他'];
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
 const $=s=>document.querySelector(s);
@@ -95,7 +96,7 @@ function add(){
   const n=Number(f.amount);
   if(!(n>0))return alert('請輸入正確金額');
   if(!f.date)return alert('請選擇日期');
-  const it={id:Date.now().toString(36)+Math.random().toString(36).slice(2,8),date:f.date,type:f.type,category:f.category,amount:n,content:f.content.trim(),note:f.note.trim(),createdAt:new Date().toISOString(),user:cfg.user,channel:f.channel,synced:false};
+  const it={id:Date.now().toString(36)+Math.random().toString(36).slice(2,8),date:f.date,type:f.type,category:f.category,amount:n,content:f.content.trim(),note:f.note.trim(),createdAt:new Date().toISOString(),user:cfg.user,channel:f.type==='income'?'':f.channel,synced:false};
   recs=[it,...recs];save();f=blank();view='home';render();
   push([it]).then(()=>{const r=recs.find(x=>x.id===it.id);if(r){r.synced=true;save();refresh()}}).catch(()=>{});
 }
@@ -104,7 +105,7 @@ function add(){
 const tot=l=>l.reduce((t,r)=>{r.type==='income'?t.i+=r.amount:t.e+=r.amount;return t},{i:0,e:0});
 
 const COLORS=['#3b6aa8','#13a07a','#d9663f','#d4a017','#8a63c9','#2ab3a6','#8d99ae','#e0527a'];
-const CTL=()=>seg('pieType',[['expense','支出'],['income','收入']],pieType)+seg('pieBy',[['category','項目'],['channel','通路'],['user','成員']],pieBy);
+const CTL=()=>seg('pieType',[['expense','支出'],['income','收入']],pieType)+seg('pieBy',[['category','項目'],['channel','通路'],['user','成員']].filter(x=>!(pieType==='income'&&x[0]==='channel')),pieBy);
 const BYL={category:'項目',channel:'通路',user:'成員'};
 const dr=(vs,n)=>`data-a="drill" data-vs="${esc(JSON.stringify(vs))}" data-n="${esc(n)}"`;
 function grp(list){
@@ -123,11 +124,12 @@ function pie(list){
   return CTL()+`<svg class="pie" viewBox="0 0 42 42" role="img" aria-label="圓餅圖">${arcs}<text x="21" y="20.5" text-anchor="middle" font-size="3" style="fill:var(--mut)">${pieType==='income'?'收入':'支出'}</text><text x="21" y="25" text-anchor="middle" font-size="4" font-weight="600" style="fill:var(--tx)">${fmt(total)}</text></svg>`
     +g.map(([n,v,vs],i)=>`<button class="leg" ${dr(vs,n)}><i class="dot" style="background:${COLORS[i]}"></i><span>${esc(n)}</span><span>${fmt(v)}</span><b>${(v/total*100).toFixed(1)}%</b></button>`).join('');
 }
-const nextBy=u=>['category','user','channel'].find(x=>!u.includes(x))||null;
+const dims=t=>t==='income'?['category','user']:['category','user','channel'];
+const nextBy=(u,t)=>dims(t).find(x=>!u.includes(x))||null;
 function drillV(shown){
   const inc=drill.type==='income',sum=shown.reduce((a,r)=>a+r.amount,0),n=drill.fl.length;
   const crumbs=`<button class="lnk" data-a="crumb" data-v="0">統計（${inc?'收入':'支出'}）</button>`+drill.fl.map((f,i)=>{const t=`${BYL[f.k]}：${esc(f.n)}`;return ' › '+(i===n-1?`<b>${t}</b>`:`<button class="lnk" data-a="crumb" data-v="${i+1}">${t}</button>`)}).join('');
-  const free=['category','user','channel'].filter(x=>!drill.fl.some(f=>f.k===x));
+  const free=dims(drill.type).filter(x=>!drill.fl.some(f=>f.k===x));
   let sub='';
   if(free.length&&sum>0){
     const by=free.includes(drill.by)?drill.by:free[0],m={};
@@ -166,7 +168,7 @@ function home(){
   ${drill?'':seg('mode',[['combined','合併'],['pie','統計']],mode)+(ranged?rangeUI:'')}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
   <p class="mut sm r">成員：${esc(cfg.user)}　<a href="#" data-a="go" data-v="settings">設定</a></p></div>
   <div class="bar"><button class="btn" data-a="sync">${syncing?'同步中…':'同步'}</button><button class="btn pri" data-a="go" data-v="add">記一筆</button></div>
-  ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}${r.content?'　'+esc(r.content):''}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
+  ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}${r.content?'　'+esc(r.content):''}${r.type==='income'&&!r.channel?'':'　'+esc(r.channel||'—')}　${esc(r.user||'—')}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
 }
 function addV(){
   const chips=(k,items,v)=>`<div class="chips">${items.map(c=>`<button class="chip ${c===v?'on':''}" data-a="f" data-k="${k}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
@@ -175,8 +177,8 @@ function addV(){
   <label>日期</label><input type="date" data-f="date" value="${esc(f.date)}">
   <label>金額</label><input data-f="amount" inputmode="decimal" placeholder="0" value="${esc(f.amount)}">
   <label>內容</label><input data-f="content" placeholder="例如：午餐便當" value="${esc(f.content)}">
-  <label>項目</label>${chips('category',CATEGORIES,f.category)}
-  <label>通路</label>${chips('channel',CHANNELS,f.channel)}
+  <label>項目</label>${chips('category',f.type==='income'?INCOME_CATEGORIES:CATEGORIES,f.category)}
+  ${f.type==='income'?'':`<label>通路</label>${chips('channel',CHANNELS,f.channel)}`}
   <label>備註</label><input data-f="note" placeholder="選填" value="${esc(f.note)}">
   <button class="btn pri full" data-a="save">儲存</button></div>`;
 }
@@ -193,18 +195,18 @@ function render(){$('#app').innerHTML=view==='home'?home():view==='add'?addV():s
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-a]');if(!el)return;e.preventDefault();
   const{a,k,v}=el.dataset;
-  if(a==='set'){if(k==='mode')mode=v;else if(k==='pieBy')pieBy=v;else if(k==='subBy'){if(drill)drill.by=v}else if(k==='pieType')pieType=v;render()}
+  if(a==='set'){if(k==='mode')mode=v;else if(k==='pieBy')pieBy=v;else if(k==='subBy'){if(drill)drill.by=v}else if(k==='pieType'){pieType=v;if(v==='income'&&pieBy==='channel')pieBy='category'}render()}
   else if(a==='ym'){ym=shift(ym,+v);render()}
   else if(a==='rp'){setPreset(v);render()}
   else if(a==='sync')sync();
   else if(a==='drill'){
     const vs=JSON.parse(el.dataset.vs),n=el.dataset.n;
-    if(drill){drill.fl.push({k,vs,n});drill.by=nextBy(drill.fl.map(x=>x.k))}
-    else drill={type:pieType,fl:[{k:pieBy,vs,n}],by:nextBy([pieBy])};
+    if(drill){drill.fl.push({k,vs,n});drill.by=nextBy(drill.fl.map(x=>x.k),drill.type)}
+    else drill={type:pieType,fl:[{k:pieBy,vs,n}],by:nextBy([pieBy],pieType)};
     render();scrollTo(0,0)}
-  else if(a==='crumb'){const i=+v;if(i<=0)drill=null;else{drill.fl=drill.fl.slice(0,i);drill.by=nextBy(drill.fl.map(x=>x.k))}render();scrollTo(0,0)}
+  else if(a==='crumb'){const i=+v;if(i<=0)drill=null;else{drill.fl=drill.fl.slice(0,i);drill.by=nextBy(drill.fl.map(x=>x.k),drill.type)}render();scrollTo(0,0)}
   else if(a==='go'){drill=null;view=v;if(v==='settings')sc={...cfg};render()}
-  else if(a==='f'){f[k]=v;render()}
+  else if(a==='f'){f[k]=v;if(k==='type'){f.category=(v==='income'?INCOME_CATEGORIES:CATEGORIES)[0];f.channel=v==='income'?'':CHANNELS[0]}render()}
   else if(a==='save')add();
   else if(a==='cfg'){
     const u=sc.url.trim(),t=sc.token.trim(),n=sc.user.trim();
