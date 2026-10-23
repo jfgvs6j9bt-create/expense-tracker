@@ -166,7 +166,7 @@ function home(){
   ${drill?'':seg('mode',[['combined','合併'],['pie','統計']],mode)+(ranged?rangeUI:'')}${body}${err?`<p class="exp sm">${esc(err)}</p>`:''}
   <p class="mut sm r">成員：${esc(cfg.user)}　<a href="#" data-a="go" data-v="settings">設定</a></p></div>
   <div class="bar"><button class="btn" data-a="sync">${syncing?'同步中…':'同步'}</button><button class="btn pri" data-a="go" data-v="add">記一筆</button></div>
-  ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.content?'　'+esc(r.content):''}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
+  ${shown.map(r=>`<div class="it"><div><div>${esc(r.category)}${r.synced?'':' ⏳'}</div><div class="mut sm">${esc(r.date)}${r.content?'　'+esc(r.content):''}　${esc(r.channel||'—')}　${esc(r.user||'—')}${r.note?'　('+esc(r.note)+')':''}</div></div><b class="${r.type==='income'?'inc':'exp'}">${r.type==='income'?'+':'-'}${fmt(r.amount)}</b></div>`).join('')||'<p class="mut c">這段期間還沒有帳目，按「記一筆」新增。</p>'}`;
 }
 function addV(){
   const chips=(k,items,v)=>`<div class="chips">${items.map(c=>`<button class="chip ${c===v?'on':''}" data-a="f" data-k="${k}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
